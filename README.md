@@ -1,70 +1,64 @@
 # Bestman Merchandise Nig. Ltd. — Fuel & Tanker Delivery Tracking System
 
-Full-stack app for automating daily fuel station record-keeping: a **Staff Portal** (frontend) and **Admin Dashboard** (backend management), built with React + Express + MySQL (Prisma).
+A Laravel + Filament application for automating daily fuel station record-keeping: an **Admin
+Dashboard** for station management and an **Staff Portal** for day-to-day data entry, both
+served from the same codebase as separate Filament panels.
 
-## Project Structure
+## Stack
 
-```
-bestman/
-  server/   Express REST API, Prisma schema, JWT auth
-  client/   React (Vite) app — Staff Portal + Admin Dashboard
-```
+- **Laravel 13** + **Filament 5** (two panels: `/admin` and `/staff`)
+- **MySQL**
+- **Tailwind CSS v4** + **Vite** for the panel theme
 
-## Prerequisites
+## Panels
 
-- Node.js 18+
-- MySQL 8+ running locally (or a connection string to a hosted instance)
+- **Admin** (`/admin`) — user management, tanks/pumps/rate card configuration, tanker
+  delivery confirm/reject workflow, daily entry review, profit & loss, reports and alerts.
+- **Staff** (`/staff`) — stock overview, tanker delivery intake, and the daily transaction
+  entry form (pump readings, payment breakdown, expenses).
 
-## 1. Backend Setup (`server/`)
+## Setup
 
-```powershell
-cd server
-copy .env.example .env
-# edit .env and set your MySQL password in DATABASE_URL / JWT_SECRET
+```bash
+composer install
 npm install
-npx prisma migrate dev --name init
-npm run seed
-npm run dev
+
+cp .env.example .env
+php artisan key:generate
 ```
 
-API runs at `http://localhost:4000`. Health check: `GET /api/health`.
+Edit `.env` and point `DB_CONNECTION`/`DB_HOST`/`DB_DATABASE`/`DB_USERNAME`/`DB_PASSWORD` at
+a MySQL database, then:
 
-Seeded accounts:
-- Admin: `admin` / `Admin@123`
-- Staff: `staff1` / `Staff@123`
-
-## 2. Frontend Setup (`client/`)
-
-```powershell
-cd client
-npm install
-npm run dev
+```bash
+php artisan migrate --seed
+npm run build   # or `npm run dev` while working on the panel theme
+php artisan serve
 ```
 
-App runs at `http://localhost:5173` (Vite dev server proxies `/api` to the backend on port 4000).
+Seeded accounts (see `database/seeders/DatabaseSeeder.php`):
 
-Drop the official logo file at `client/public/logo.png` — it's referenced by the login screen, sidebar branding, and browser favicon.
+- Admin: `admin@gmail.com` / `12345678`
+- Staff: `staff@gmail.com` / `12345678`
 
-## 3. Feature Map
+## Key business rules
 
-### Staff Portal
-- **Login** — Admin-issued Name/Username/Password.
-- **Stock Inventory View** — live tank levels, selling price, expected value.
-- **Tanker Delivery Intake** — logs plate no., supplier, invoice, waybill vs. received liters, auto variance alert.
-- **Daily Transaction Entry** (single page) — pump readings with auto liters/total + price-variance flag, payment breakdown with sum validation, expenses, and net cash reconciliation.
+- Delivery variance = waybill litres − received litres, calculated automatically on the
+  delivery form.
+- Tank stock only increases once Admin **confirms** a pending delivery
+  (`TankerDelivery::confirm()`); rejecting a delivery leaves stock untouched. Both actions are
+  idempotent — a delivery can only be confirmed or rejected once.
+- Confirming a delivery also updates the product's rolling buying price.
+- Price variance is flagged when a staff-entered selling price exceeds the product's base
+  price at the time of entry.
+- Payment breakdown (cash + POS + bank deposit) is reconciled live against the fuel grand
+  total on the daily entry form.
+- Net cash revenue = fuel grand total − total expenses.
+- Gross profit = (selling price − buying price) × litres sold, per pump reading; net profit
+  subtracts expenses. Losses are highlighted in red throughout the admin reports.
 
-### Admin Dashboard
-- **User Management** — create/deactivate Staff & Admin accounts.
-- **Tanks, Pumps & Prices** — configure tanks/pumps, dipping correction, base selling price per product.
-- **Tanker Deliveries** — confirm/reject pending deliveries, set buying price (updates stock + rolling cost), shortage alerts.
-- **Daily Reports** — full daily entry detail (readings, payments, expenses), active price/delivery alerts.
-- **Profit & Loss** — gross/net profit per day and totals over a date range, with losses highlighted in red.
+## Tests
 
-## 4. Key Business Rules Implemented
-
-- Delivery variance = Waybill Liters − Received Liters (flagged if non-zero).
-- Stock increases only after Admin **confirms** a delivery (`New Stock = Old Stock + Received Liters`).
-- Price variance flagged when staff-entered selling price > Admin base price.
-- Payment breakdown (Cash + POS + Bank Deposit) must equal Fuel Grand Total before a daily entry can submit.
-- Net Cash Revenue = Fuel Grand Total − Total Expenses.
-- Gross Profit = (Selling Price − Buying Price) × Liters Sold; Net Profit = Gross Profit − Expenses; negative values render in red.
+```bash
+php artisan test
+```
