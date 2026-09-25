@@ -1,0 +1,186 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  STAFF
+}
+
+enum ProductType {
+  PMS
+  DIESEL
+  KEROSENE
+}
+
+enum DeliveryStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+}
+
+enum DailyEntryStatus {
+  DRAFT
+  SUBMITTED
+}
+
+enum ExpenseCategory {
+  MAINTENANCE
+  SALARY
+  LOGISTICS
+  UTILITIES
+  MISCELLANEOUS
+  OTHER
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  name      String
+  username  String   @unique
+  password  String
+  role      Role
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdDeliveries   TankerDelivery[] @relation("StaffDeliveries")
+  confirmedDeliveries TankerDelivery[] @relation("AdminConfirmedDeliveries")
+  dailyEntries        DailyEntry[]
+
+  @@map("users")
+}
+
+// Master product config: base selling price (admin-set) and rolling buying price (from last confirmed delivery)
+model Product {
+  id                  Int         @id @default(autoincrement())
+  type                ProductType @unique
+  basePricePerLiter   Decimal     @db.Decimal(10, 2)
+  buyingPricePerLiter Decimal     @db.Decimal(10, 2) @default(0)
+  updatedAt           DateTime    @updatedAt
+
+  tanks      Tank[]
+  pumps      Pump[]
+  deliveries TankerDelivery[]
+
+  @@map("products")
+}
+
+model Tank {
+  id                 Int      @id @default(autoincrement())
+  name               String
+  product            Product  @relation(fields: [productId], references: [id])
+  productId          Int
+  capacityLiters     Decimal  @db.Decimal(12, 2)
+  currentStockLiters Decimal  @db.Decimal(12, 2) @default(0)
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  pumps      Pump[]
+  deliveries TankerDelivery[]
+
+  @@map("tanks")
+}
+
+model Pump {
+  id        Int      @id @default(autoincrement())
+  name      String
+  product   Product  @relation(fields: [productId], references: [id])
+  productId Int
+  tank      Tank     @relation(fields: [tankId], references: [id])
+  tankId    Int
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  readings PumpReading[]
+
+  @@map("pumps")
+}
+
+model TankerDelivery {
+  id                  Int            @id @default(autoincrement())
+  tankerPlateNumber   String
+  supplierName        String
+  invoiceNumber       String
+  product             Product        @relation(fields: [productId], references: [id])
+  productId           Int
+  tank                Tank           @relation(fields: [tankId], references: [id])
+  tankId              Int
+  waybillLiters       Decimal        @db.Decimal(12, 2)
+  receivedLiters      Decimal        @db.Decimal(12, 2)
+  varianceLiters      Decimal        @db.Decimal(12, 2)
+  buyingPricePerLiter Decimal?       @db.Decimal(10, 2)
+  totalCost           Decimal?       @db.Decimal(14, 2)
+  driverNotes         String?
+  status              DeliveryStatus @default(PENDING)
+  createdBy           User           @relation("StaffDeliveries", fields: [createdById], references: [id])
+  createdById         Int
+  confirmedBy         User?          @relation("AdminConfirmedDeliveries", fields: [confirmedById], references: [id])
+  confirmedById       Int?
+  confirmedAt         DateTime?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@map("tanker_deliveries")
+}
+
+model DailyEntry {
+  id                   Int              @id @default(autoincrement())
+  entryDate            DateTime         @db.Date
+  staff                User             @relation(fields: [staffId], references: [id])
+  staffId              Int
+  status               DailyEntryStatus @default(SUBMITTED)
+  fuelGrandTotalLiters Decimal          @db.Decimal(12, 2) @default(0)
+  fuelGrandTotalAmount Decimal          @db.Decimal(14, 2) @default(0)
+  cashAmount           Decimal          @db.Decimal(14, 2) @default(0)
+  posAmount            Decimal          @db.Decimal(14, 2) @default(0)
+  bankDepositAmount    Decimal          @db.Decimal(14, 2) @default(0)
+  totalExpenses        Decimal          @db.Decimal(14, 2) @default(0)
+  netCashRevenue       Decimal          @db.Decimal(14, 2) @default(0)
+  grossProfit          Decimal          @db.Decimal(14, 2) @default(0)
+  netProfit            Decimal          @db.Decimal(14, 2) @default(0)
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  pumpReadings PumpReading[]
+  expenses     Expense[]
+
+  @@unique([staffId, entryDate])
+  @@map("daily_entries")
+}
+
+model PumpReading {
+  id               Int        @id @default(autoincrement())
+  dailyEntry       DailyEntry @relation(fields: [dailyEntryId], references: [id], onDelete: Cascade)
+  dailyEntryId     Int
+  pump             Pump       @relation(fields: [pumpId], references: [id])
+  pumpId           Int
+  openingReading   Decimal    @db.Decimal(12, 2)
+  closingReading   Decimal    @db.Decimal(12, 2)
+  litersSold       Decimal    @db.Decimal(12, 2)
+  unitSellingPrice Decimal    @db.Decimal(10, 2)
+  totalAmount      Decimal    @db.Decimal(14, 2)
+  basePriceAtEntry Decimal    @db.Decimal(10, 2)
+  priceVariance    Boolean    @default(false)
+  createdAt        DateTime   @default(now())
+
+  @@map("pump_readings")
+}
+
+model Expense {
+  id           Int             @id @default(autoincrement())
+  dailyEntry   DailyEntry      @relation(fields: [dailyEntryId], references: [id], onDelete: Cascade)
+  dailyEntryId Int
+  description  String
+  category     ExpenseCategory @default(OTHER)
+  amount       Decimal         @db.Decimal(14, 2)
+  createdAt    DateTime        @default(now())
+
+  @@map("expenses")
+}

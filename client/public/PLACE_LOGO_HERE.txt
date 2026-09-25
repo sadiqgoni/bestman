@@ -1,0 +1,1 @@
+Place the official Bestman Merchandise logo file here as `logo.png` (referenced by index.html favicon and the app header/sidebar branding).
